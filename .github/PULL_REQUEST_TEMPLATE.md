@@ -4,6 +4,8 @@
 <!-- Please make sure that your commit message follows our format -->
 <!-- Example: `fix(nx): must begin with lowercase` -->
 
+<!-- To request a new release for this pull request, mention someone from the Nx team or the `@nrwl/nx-pipelines-reviewers`. -->
+
 ## Current Behavior
 <!-- This is the behavior we have today -->
 
@@ -14,9 +16,3 @@
 <!-- Please link the issue being fixed so it gets closed when this is merged. -->
 
 Fixes #
-
-## 🐳 PR release
-
-This PR does not have a release associated with it.
-
-To request a new release for this pull request, mention someone from the Nx team or the `@nrwl/nx-pipelines-reviewers`.

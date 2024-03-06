@@ -92,7 +92,8 @@ jobs:
     runs-on: ${{ matrix.settings.host }}
     outputs:
       clean_branch_name: ${{ steps.set_branch_name.outputs.clean_branch_name }}
-      clean_fork_repo: ${{ steps.set_branch_name.outputs.clean_fork_repo }}
+      clean_fork_repo: ${{ steps.set_clean_fork_repo.outputs.clean_fork_repo }}
+      full_pr_sha: ${{ steps.set_full_pr_sha.outputs.full_pr_sha }}
     steps:
       - name: Fetch PR details (if PR number provided)
         if: github.event.inputs.pr
@@ -106,9 +107,14 @@ jobs:
               repo: context.repo.repo,
               pull_number: ${{ github.event.inputs.pr }},
             });
+            console.log(`Owner: ${context.repo.owner}`);
+            console.log(`Repo: ${context.repo.repo}`);
+            console.log(`Fork repo:`, pr.data.head.repo.full_name);
             console.log(`Fetched PR details: ${pr.data.head.ref}`);
+            console.log(`Full PR SHA: ${pr.data.head.sha}`);
             core.setOutput('pr_branch_name', pr.data.head.ref);
             core.setOutput('fork_repo', pr.data.head.repo.full_name);
+            core.setOutput('full_pr_sha', pr.data.head.sha);
 
       - name: Set Clean Branch Name
         # The reason we're doing this is because the branch name comes back 
@@ -116,14 +122,19 @@ jobs:
         if: github.event.inputs.pr
         id: set_branch_name
         run: echo "clean_branch_name=$(echo '${{ steps.pr_details.outputs.pr_branch_name }}' | sed 's/"//g')" >> $GITHUB_OUTPUT
-     
+         
       - name: Set Clean Fork Repo name
-        # The reason we're doing this is because the branch name comes back 
-        # in double quotes, and we need to remove them to use it as a ref to checkout
+        # The reason we're doing this is because the fork name comes back 
+        # in double quotes, and we need to remove them to use in checkout
         if: github.event.inputs.pr
         id: set_clean_fork_repo
         run: echo "clean_fork_repo=$(echo '${{ steps.pr_details.outputs.fork_repo }}' | sed 's/"//g')" >> $GITHUB_OUTPUT   
         
+      - name: Set long PR SHA
+        if: github.event.inputs.pr
+        id: set_full_pr_sha
+        run: echo "full_pr_sha=$(echo '${{ steps.pr_details.outputs.full_pr_sha }}' | sed 's/"//g')" >> $GITHUB_OUTPUT   
+          
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.set_branch_name.outputs.clean_branch_name }}
@@ -312,13 +323,14 @@ jobs:
             const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
             const day = String(date.getDate()).padStart(2, '0');
             const YYYYMMDD = `${year}${month}${day}`;
-            // Get the current short git sha
-            const shortSHA = context.sha.substring(0, 7);
+            // Get the current PR short git sha
+            const fullSHA = "${{ needs.build.outputs.full_pr_sha  }}";
+            const shortSHA = fullSHA.slice(0, 7);
             const prInput = ${{ github.event.inputs.pr }};
             const prReleaseVersion = `0.0.0-pr-${prInput}-${YYYYMMDD}-${shortSHA}`;
             core.setOutput('pr_release_version', prReleaseVersion); 
             core.setOutput('short_sha', shortSHA); 
-            core.setOutput('long_sha', context.sha); 
+            core.setOutput('long_sha', fullSHA); 
             console.log(`Generated PR release version: ${prReleaseVersion}`);
       - name: Publish
         run: |
@@ -369,7 +381,7 @@ jobs:
           script: |
             const issue_number = ${{ github.event.inputs.pr }};
             const prReleaseVersion = "${{ steps.versioning.outputs.pr_release_version }}";
-            console.log('Here is the fork repo:', ${{ needs.build.outputs.clean_fork_repo }});
+            const repo = "${{ needs.build.outputs.clean_fork_repo }}"?.length > 0 ? "${{ needs.build.outputs.clean_fork_repo }}" : "nrwl/nx";
             const message = `
             ## 🐳 We have a release for that!
 
@@ -386,10 +398,10 @@ jobs:
 
             | Release details | 📑 |
             | ------------- | ------------- |
-            | **Published version** | [${prReleaseVersion}](https://npmjs.com/package/@storybook/cli/v/${prReleaseVersion}) |
+            | **Published version** | [${prReleaseVersion}](https://www.npmjs.com/package/nx/v/${prReleaseVersion}) |
             | **Triggered by** | @${{ github.triggering_actor }} |
-            | **Branch** | [${{ needs.build.outputs.clean_branch_name }}](https://github.com/nrwl/nx/tree/${{ needs.build.outputs.clean_branch_name }}) |
-            | **Commit** | [${{ steps.versioning.outputs.short_sha }}](https://github.com/nrwl/nx/commit/${{ steps.versioning.outputs.long_sha }}) |
+            | **Branch** | [${{ needs.build.outputs.clean_branch_name }}](https://github.com/${repo}/tree/${{ needs.build.outputs.clean_branch_name }}) |
+            | **Commit** | [${{ steps.versioning.outputs.short_sha }}](https://github.com/${repo}/commit/${{ steps.versioning.outputs.long_sha }}) |
             | **Workflow run** | [${{ github.run_id }}](https://github.com/nrwl/nx/actions/runs/${{ github.run_id }}) |
 
             To request a new release for this pull request, mention someone from the Nx team or the \`@nrwl/nx-pipelines-reviewers\`.   
