@@ -90,6 +90,8 @@ jobs:
             build: pnpm nx run-many --target=build-native -- --target=aarch64-pc-windows-msvc
     name: stable - ${{ matrix.settings.target }} - node@18
     runs-on: ${{ matrix.settings.host }}
+    outputs:
+      clean_branch_name: ${{ steps.set_branch_name.outputs.clean_branch_name }}
     steps:
       - name: Fetch PR details (if PR number provided)
         if: github.event.inputs.pr
@@ -104,17 +106,18 @@ jobs:
               pull_number: ${{ github.event.inputs.pr }},
             });
             console.log(`Fetched PR details: ${pr.data.head.ref}`);
-            return pr.data.head.ref;
+            core.setOutput('pr_branch_name', pr.data.head.ref);
 
       - name: Set Clean Branch Name
         # The reason we're doing this is because the branch name comes back 
         # in double quotes, and we need to remove them to use it as a ref to checkout
         if: github.event.inputs.pr
-        run: echo "CLEAN_BRANCH_NAME=${{ steps.pr_details.outputs.result }}" | sed 's/"//g' >> $GITHUB_ENV
+        id: set_branch_name
+        run: echo "::set-output name=clean_branch_name::$(echo '${{ steps.pr_details.outputs.pr_branch_name }}' | sed 's/"//g')"
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.CLEAN_BRANCH_NAME }}
+          ref: ${{ steps.set_branch_name.outputs.clean_branch_name }}
 
       - uses: pnpm/action-setup@v2
         with:
@@ -194,7 +197,7 @@ jobs:
        - uses: actions/checkout@v4
          if: ${{ github.event_name != 'schedule' }}
          with:
-          ref: ${{ env.CLEAN_BRANCH_NAME }}
+          ref: ${{ needs.build.outputs.clean_branch_name  }}
        - name: Build
          id: build
          if: ${{ github.event_name != 'schedule' }}
@@ -263,7 +266,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.CLEAN_BRANCH_NAME }}
+          ref: ${{ needs.build.outputs.clean_branch_name  }}
       - uses: pnpm/action-setup@v2
         with:
           version: 8
@@ -323,6 +326,7 @@ jobs:
               DRY_RUN=""
               VERSION="${{ steps.versioning.outputs.pr_release_version }}"
               echo "Version for PR release set to: $VERSION"
+              echo "PR Release from branch: ${{ needs.build.outputs.clean_branch_name  }}"
             else
               # Otherwise, perform a dry-run on the current branch
               DRY_RUN="--dry-run"
@@ -370,7 +374,7 @@ jobs:
             | ------------- | ------------- |
             | **Published version** | [${prReleaseVersion}](https://npmjs.com/package/@storybook/cli/v/${prReleaseVersion}) |
             | **Triggered by** | @${{ github.triggering_actor }} |
-            | **Branch** | [${{ env.CLEAN_BRANCH_NAME }}](https://github.com/nrwl/nx/tree/${{ env.CLEAN_BRANCH_NAME }}) |
+            | **Branch** | [${{ needs.build.outputs.clean_branch_name }}](https://github.com/nrwl/nx/tree/${{ needs.build.outputs.clean_branch_name }}) |
             | **Commit** | [${{ steps.versioning.outputs.short_sha }}](https://github.com/nrwl/nx/commit/${{ steps.versioning.outputs.long_sha }}) |
             | **Workflow run** | [${{ github.run_id }}](https://github.com/nrwl/nx/actions/runs/${{ github.run_id }}) |
 
