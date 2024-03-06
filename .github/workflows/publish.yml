@@ -92,6 +92,7 @@ jobs:
     runs-on: ${{ matrix.settings.host }}
     outputs:
       clean_branch_name: ${{ steps.set_branch_name.outputs.clean_branch_name }}
+      clean_fork_repo: ${{ steps.set_branch_name.outputs.clean_fork_repo }}
     steps:
       - name: Fetch PR details (if PR number provided)
         if: github.event.inputs.pr
@@ -107,17 +108,26 @@ jobs:
             });
             console.log(`Fetched PR details: ${pr.data.head.ref}`);
             core.setOutput('pr_branch_name', pr.data.head.ref);
+            core.setOutput('fork_repo', pr.data.head.repo.full_name);
 
       - name: Set Clean Branch Name
         # The reason we're doing this is because the branch name comes back 
         # in double quotes, and we need to remove them to use it as a ref to checkout
         if: github.event.inputs.pr
         id: set_branch_name
-        run: echo "::set-output name=clean_branch_name::$(echo '${{ steps.pr_details.outputs.pr_branch_name }}' | sed 's/"//g')"
-
+        run: echo "clean_branch_name=$(echo '${{ steps.pr_details.outputs.pr_branch_name }}' | sed 's/"//g')" >> $GITHUB_OUTPUT
+     
+      - name: Set Clean Fork Repo name
+        # The reason we're doing this is because the branch name comes back 
+        # in double quotes, and we need to remove them to use it as a ref to checkout
+        if: github.event.inputs.pr
+        id: set_clean_fork_repo
+        run: echo "clean_fork_repo=$(echo '${{ steps.pr_details.outputs.fork_repo }}' | sed 's/"//g')" >> $GITHUB_OUTPUT   
+        
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.set_branch_name.outputs.clean_branch_name }}
+          repository: ${{ steps.set_clean_fork_repo.outputs.clean_fork_repo }} 
 
       - uses: pnpm/action-setup@v2
         with:
@@ -198,6 +208,7 @@ jobs:
          if: ${{ github.event_name != 'schedule' }}
          with:
           ref: ${{ needs.build.outputs.clean_branch_name  }}
+          repository: ${{ needs.build.outputs.clean_fork_repo }} 
        - name: Build
          id: build
          if: ${{ github.event_name != 'schedule' }}
@@ -267,6 +278,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.build.outputs.clean_branch_name  }}
+          repository: ${{ needs.build.outputs.clean_fork_repo }} 
       - uses: pnpm/action-setup@v2
         with:
           version: 8
@@ -327,6 +339,7 @@ jobs:
               VERSION="${{ steps.versioning.outputs.pr_release_version }}"
               echo "Version for PR release set to: $VERSION"
               echo "PR Release from branch: ${{ needs.build.outputs.clean_branch_name  }}"
+              echo "PR Release from fork: ${{ needs.build.outputs.clean_fork_repo  }}"
             else
               # Otherwise, perform a dry-run on the current branch
               DRY_RUN="--dry-run"
@@ -356,6 +369,7 @@ jobs:
           script: |
             const issue_number = ${{ github.event.inputs.pr }};
             const prReleaseVersion = "${{ steps.versioning.outputs.pr_release_version }}";
+            console.log('Here is the fork repo:', ${{ needs.build.outputs.clean_fork_repo }});
             const message = `
             ## 🐳 We have a release for that!
 
